@@ -1,8 +1,9 @@
 import { createContext, useContext, useState } from 'react';
 import { Password, PasswordContextType } from '../types';
-import { supabase } from '../lib/supabase';
 import { useAuth } from './AuthContext';
 import { encryptPassword } from '../lib/utils';
+import { db } from '../lib/firebase';
+import { collection, query, where, orderBy, getDocs, addDoc, updateDoc, deleteDoc, doc, Timestamp } from 'firebase/firestore';
 
 const PasswordContext = createContext<PasswordContextType | null>(null);
 
@@ -15,77 +16,96 @@ export const PasswordProvider = ({ children }: { children: React.ReactNode }) =>
     if (!user) return;
     setLoading(true);
     try {
-      const { data, error } = await supabase
-        .from('passwords')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('created_at', { ascending: false });
+      const passwordsRef = collection(db, 'passwords');
+      const q = query(
+        passwordsRef,
+        where('user_id', '==', user.id),
+        orderBy('created_at', 'desc')
+      );
 
-      if (error) throw error;
-      setPasswords(data || []);
+      const querySnapshot = await getDocs(q);
+      const data: Password[] = [];
+      querySnapshot.forEach((docSnap) => {
+        const passwordData = docSnap.data();
+        data.push({
+          id: docSnap.id,
+          ...passwordData,
+          created_at: passwordData.created_at.toDate().toISOString(),
+          updated_at: passwordData.updated_at.toDate().toISOString(),
+        } as Password);
+      });
+      setPasswords(data);
     } catch (error) {
       console.error('Error fetching passwords:', error);
+      throw error;
     } finally {
       setLoading(false);
     }
   };
 
   const addPassword = async (data: Omit<Password, 'id' | 'user_id' | 'created_at' | 'updated_at'>) => {
-    if (!user) return;
-    const encryptedPassword = encryptPassword(data.encrypted_password, user.id);
-    
-    const { error } = await supabase.from('passwords').insert({
-      user_id: user.id,
-      website: data.website,
-      username: data.username,
-      encrypted_password: encryptedPassword,
-      website_icon: data.website_icon,
-    });
+    if (!user) throw new Error('Not authenticated');
 
-    if (error) throw error;
-    await getPasswords();
+    const now = Timestamp.now();
+    const passwordData = {
+      ...data,
+      user_id: user.id,
+      encrypted_password: encryptPassword(data.encrypted_password, user.id),
+      created_at: now,
+      updated_at: now,
+    };
+
+    try {
+      const docRef = await addDoc(collection(db, 'passwords'), passwordData);
+      await getPasswords(); // Refresh the list
+    } catch (error) {
+      console.error('Error adding password:', error);
+      throw error;
+    }
   };
 
   const updatePassword = async (id: string, data: Partial<Password>) => {
-    if (!user) return;
-    
-    const updates: Partial<Password> = { ...data };
+    if (!user) throw new Error('Not authenticated');
+
+    const passwordRef = doc(db, 'passwords', id);
+    const updateData: any = { ...data, updated_at: Timestamp.now() };
+
     if (data.encrypted_password) {
-      updates.encrypted_password = encryptPassword(data.encrypted_password, user.id);
+      updateData.encrypted_password = encryptPassword(data.encrypted_password, user.id);
     }
 
-    const { error } = await supabase
-      .from('passwords')
-      .update(updates)
-      .eq('id', id)
-      .eq('user_id', user.id);
-
-    if (error) throw error;
-    await getPasswords();
+    try {
+      await updateDoc(passwordRef, updateData);
+      await getPasswords(); // Refresh the list
+    } catch (error) {
+      console.error('Error updating password:', error);
+      throw error;
+    }
   };
 
   const deletePassword = async (id: string) => {
-    if (!user) return;
-    
-    const { error } = await supabase
-      .from('passwords')
-      .delete()
-      .eq('id', id)
-      .eq('user_id', user.id);
+    if (!user) throw new Error('Not authenticated');
 
-    if (error) throw error;
-    await getPasswords();
+    try {
+      await deleteDoc(doc(db, 'passwords', id));
+      await getPasswords(); // Refresh the list
+    } catch (error) {
+      console.error('Error deleting password:', error);
+      throw error;
+    }
   };
 
   return (
-    <PasswordContext.Provider value={{
-      passwords,
-      loading,
-      addPassword,
-      updatePassword,
-      deletePassword,
-      getPasswords,
-    }}>
+    <PasswordContext.Provider
+      value={{
+        passwords,
+        loading,
+        addPassword,
+        updatePassword,
+        deletePassword,
+        getPasswords,
+      }}
+    >
       {children}
     </PasswordContext.Provider>
   );

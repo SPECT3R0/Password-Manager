@@ -28,7 +28,8 @@ function App() {
                     <Settings />
                   </PrivateRoute>
                 } />
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/" element={<Navigate to="/login" replace />} />
+
               </Routes>
             </div>
           </PasswordProvider>

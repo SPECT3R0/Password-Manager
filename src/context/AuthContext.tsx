@@ -1,12 +1,14 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { AuthContextType, User } from '../types';
-import { supabase } from '../lib/supabase';
+import { auth, db } from '../lib/firebase';
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut, sendEmailVerification } from 'firebase/auth';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Password validation function
+// Password validation function - keep as is
 const validatePassword = (password: string): { isValid: boolean; message: string } => {
   if (password.length < 7) {
     return { isValid: false, message: 'Password must be at least 7 characters long' };
@@ -26,114 +28,113 @@ const validatePassword = (password: string): { isValid: boolean; message: string
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const inactivityTimeout = useRef<NodeJS.Timeout | null>(null);
 
+  // Listen for Firebase Auth state changes
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session) {
-        const { data: userData } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Get user profile from Firestore
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        const userDoc = await getDoc(userDocRef);
 
-        setUser(userData ? {
-          id: session.user.id,
-          email: session.user.email!,
-          created_at: session.user.created_at,
-          two_factor_secret: userData.two_factor_secret,
-          two_factor_enabled: userData.two_factor_enabled
-        } : null);
+        let userData = null;
+        if (userDoc.exists()) {
+          userData = userDoc.data();
+        } else {
+          // Create new user profile if missing
+          await setDoc(userDocRef, {
+            email: firebaseUser.email,
+            two_factor_enabled: false,
+            two_factor_secret: null,
+            created_at: firebaseUser.metadata.creationTime || new Date().toISOString(),
+          });
+          userData = {
+            email: firebaseUser.email,
+            two_factor_enabled: false,
+            two_factor_secret: null,
+            created_at: firebaseUser.metadata.creationTime || new Date().toISOString(),
+          };
+        }
+
+        setUser({
+          id: firebaseUser.uid,
+          email: firebaseUser.email!,
+          created_at: userData.created_at,
+          two_factor_enabled: userData.two_factor_enabled,
+          two_factor_secret: userData.two_factor_secret || undefined,
+        });
       } else {
         setUser(null);
       }
       setLoading(false);
     });
 
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
+  }, []);
+
+  // Inactivity timer effect
+  useEffect(() => {
+    const resetTimer = () => {
+      if (inactivityTimeout.current) clearTimeout(inactivityTimeout.current);
+      inactivityTimeout.current = setTimeout(() => {
+        signOut();
+      }, 5 * 60 * 1000); // 5 minutes
+    };
+    // Listen for user activity
+    window.addEventListener('mousemove', resetTimer);
+    window.addEventListener('keydown', resetTimer);
+    window.addEventListener('mousedown', resetTimer);
+    window.addEventListener('touchstart', resetTimer);
+    resetTimer();
+    return () => {
+      if (inactivityTimeout.current) clearTimeout(inactivityTimeout.current);
+      window.removeEventListener('mousemove', resetTimer);
+      window.removeEventListener('keydown', resetTimer);
+      window.removeEventListener('mousedown', resetTimer);
+      window.removeEventListener('touchstart', resetTimer);
+    };
   }, []);
 
   const signIn = async (email: string, password: string, token?: string) => {
-    // Dummy credentials for internal testing
-    const dummyEmail = 'dummy@example.com';
-    const dummyPassword = 'DummyPass1!';
-    email = dummyEmail;
-    password = dummyPassword;
     try {
-      console.log('[signIn] Attempting login for', email);
-      console.log('[signIn] About to call supabase.auth.signInWithPassword');
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      console.log('[signIn] supabase.auth.signInWithPassword returned:', { authData, authError });
-      if (authError) {
-        console.error('[signIn] Supabase signIn error:', authError.message);
-        throw new Error(authError.message || 'Failed to sign in');
-      }
-      const authUser = authData.user;
-      console.log('[signIn] Auth user:', authUser);
-      if (!authUser) {
-        throw new Error('No user found in authentication system.');
-      }
+      // Sign in with Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
 
-      // 2. Check for user profile in users table
-      console.log('[signIn] Checking for user profile in users table');
-      let { data: userData, error: userError } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id', authUser.id)
-        .single();
-      console.log('[signIn] User profile query result:', { userData, userError });
+      if (!firebaseUser) throw new Error('No user found in authentication system.');
 
-      // 2a. If profile is missing, create it
-      if (userError || !userData) {
-        console.log('[signIn] User profile missing, creating new profile');
-        const { error: insertError } = await supabase.from('users').insert([
-          {
-            id: authUser.id,
-            email: authUser.email,
-            two_factor_enabled: false,
-            created_at: authUser.created_at || new Date().toISOString()
-          }
-        ]);
-        if (insertError) {
-          console.error('[signIn] Failed to create user profile:', insertError.message);
-          throw new Error('Failed to create user profile. Please contact support.');
-        }
-        // Fetch the newly created user profile
-        const { data: newUserData } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', authUser.id)
-          .single();
-        userData = newUserData;
-        console.log('[signIn] New user profile created:', userData);
-      }
+      // Get user profile
+      const userDocRef = doc(db, 'users', firebaseUser.uid);
+      const userDoc = await getDoc(userDocRef);
 
-      // 3. 2FA check (if enabled)
+      if (!userDoc.exists()) throw new Error('User profile not found.');
+
+      const userData = userDoc.data();
+
+      // Check 2FA if enabled
       if (userData?.two_factor_enabled) {
         if (!token) {
-          console.warn('[signIn] 2FA required but no token provided');
           throw new Error('2FA_REQUIRED');
         }
         const isValid = authenticator.verify({
           token,
-          secret: userData.two_factor_secret!
+          secret: userData.two_factor_secret,
         });
-        console.log('[signIn] 2FA verification result:', isValid);
         if (!isValid) {
           throw new Error('Invalid 2FA token');
         }
       }
 
-      // 4. Set user in context
+      // Set user context
       setUser({
-        id: authUser.id,
-        email: authUser.email!,
-        created_at: authUser.created_at,
-        two_factor_secret: userData.two_factor_secret,
-        two_factor_enabled: userData.two_factor_enabled
+        id: firebaseUser.uid,
+        email: firebaseUser.email!,
+        created_at: userData.created_at,
+        two_factor_secret: userData.two_factor_secret || undefined,
+        two_factor_enabled: userData.two_factor_enabled,
       });
-      console.log('[signIn] Login successful for', email);
     } catch (error) {
-      console.error('[signIn] Exception:', error);
       throw new Error(error instanceof Error ? error.message : 'Unexpected error during sign in');
     }
   };
@@ -146,60 +147,40 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         throw new Error(passwordValidation.message);
       }
 
-      // Check if email already exists
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('email')
-        .eq('email', email)
-        .single();
+      // Check if email already exists - Firebase does this inherently but optional to check in Firestore
+      // (If needed, could query Firestore, but Firebase Auth signUp will error on duplicate anyway)
 
-      if (existingUser) {
-        throw new Error('An account with this email already exists');
-      }
+      // Create user with Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const firebaseUser = userCredential.user;
 
-      // Create auth user
-      const { error: signUpError, data } = await supabase.auth.signUp({
+      if (!firebaseUser) throw new Error('Failed to create user account');
+
+      // Create user profile in Firestore
+      await setDoc(doc(db, 'users', firebaseUser.uid), {
         email,
-        password,
-        options: {
-          emailRedirectTo: `${window.location.origin}/auth/callback`
-        }
+        two_factor_enabled: false,
+        two_factor_secret: null,
+        created_at: firebaseUser.metadata.creationTime || new Date().toISOString(),
       });
 
-      if (signUpError) throw signUpError;
-
-      if (!data.user) {
-        throw new Error('Failed to create user account');
-      }
-
-      // Create user profile in the database
-      const { error: insertError } = await supabase.from('users').insert([
-        {
-          id: data.user.id,
-          email: data.user.email,
-          two_factor_enabled: false,
-          created_at: new Date().toISOString()
-        }
-      ]);
-
-      if (insertError) {
-        // If profile creation fails, delete the auth user
-        await supabase.auth.admin.deleteUser(data.user.id);
-        throw new Error('Failed to create user profile. Please try again.');
+      // Optionally, send email verification
+      if (firebaseUser.email) {
+        await sendEmailVerification(firebaseUser);
       }
 
       return { success: true, message: 'Account created successfully! Please check your email to verify your account.' };
     } catch (error) {
-      return { 
-        success: false, 
-        message: error instanceof Error ? error.message : 'An unexpected error occurred'
+      return {
+        success: false,
+        message: error instanceof Error ? error.message : 'An unexpected error occurred',
       };
     }
   };
 
   const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
+    await firebaseSignOut(auth);
+    setUser(null);
   };
 
   const setup2FA = async () => {
@@ -207,13 +188,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const secret = authenticator.generateSecret();
     const otpauthUrl = authenticator.keyuri(user.email, 'VaultKeeper', secret);
-
     const qrCodeUrl = await QRCode.toDataURL(otpauthUrl);
 
-    await supabase
-      .from('users')
-      .update({ two_factor_secret: secret })
-      .eq('id', user.id);
+    // Update Firestore user profile with secret (but 2FA not enabled yet)
+    const userDocRef = doc(db, 'users', user.id);
+    await updateDoc(userDocRef, { two_factor_secret: secret });
+
+    // Update user state with secret
+    setUser((u) => (u ? { ...u, two_factor_secret: secret } : null));
 
     return qrCodeUrl;
   };
@@ -223,48 +205,50 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const isValid = authenticator.verify({
       token,
-      secret: user.two_factor_secret
+      secret: user.two_factor_secret,
     });
 
     if (!isValid) throw new Error('Invalid token');
 
-    await supabase
-      .from('users')
-      .update({ two_factor_enabled: true })
-      .eq('id', user.id);
+    const userDocRef = doc(db, 'users', user.id);
+    await updateDoc(userDocRef, { two_factor_enabled: true });
 
-    setUser(user => user ? { ...user, two_factor_enabled: true } : null);
+    setUser((u) => (u ? { ...u, two_factor_enabled: true } : null));
   };
 
   const disable2FA = async () => {
     if (!user) throw new Error('Not authenticated');
 
-    await supabase
-      .from('users')
-      .update({
-        two_factor_enabled: false,
-        two_factor_secret: null
-      })
-      .eq('id', user.id);
-
-    setUser(user => user ? {
-      ...user,
+    const userDocRef = doc(db, 'users', user.id);
+    await updateDoc(userDocRef, {
       two_factor_enabled: false,
-      two_factor_secret: undefined
-    } : null);
+      two_factor_secret: null,
+    });
+
+    setUser((u) =>
+      u
+        ? {
+            ...u,
+            two_factor_enabled: false,
+            two_factor_secret: undefined,
+          }
+        : null
+    );
   };
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      loading,
-      signIn,
-      signUp,
-      signOut,
-      setup2FA,
-      verify2FA,
-      disable2FA
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        signIn,
+        signUp,
+        signOut,
+        setup2FA,
+        verify2FA,
+        disable2FA,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -272,8 +256,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
+  if (!context) throw new Error('useAuth must be used within an AuthProvider');
   return context;
 };
