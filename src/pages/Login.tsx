@@ -14,7 +14,7 @@ declare global {
 
 export default function Login() {
   const navigate = useNavigate();
-  const { signIn } = useAuth();
+  const { login, verify2FA } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -51,7 +51,7 @@ export default function Login() {
 
     setLoading(true);
     try {
-      await signIn(email, password);
+      await login(email, password);
       navigate('/dashboard');
     } catch (err: any) {
       if (err.message === '2FA_REQUIRED') {
@@ -70,7 +70,7 @@ export default function Login() {
     setLoading(true);
 
     try {
-      await signIn(email, password, twoFactorToken);
+      await verify2FA(twoFactorToken);
       navigate('/dashboard');
     } catch (err: any) {
       setTwoFactorError(err.message || 'Invalid 2FA token');

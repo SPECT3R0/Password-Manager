@@ -1,7 +1,15 @@
 import React, { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
-import { AuthContextType, User } from '../types';
+import { User } from '../types';
 import { auth, db } from '../lib/firebase';
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut, sendEmailVerification, updatePassword, User as FirebaseUser } from 'firebase/auth';
+import { 
+  onAuthStateChanged, 
+  signInWithEmailAndPassword, 
+  createUserWithEmailAndPassword, 
+  signOut as firebaseSignOut, 
+  sendEmailVerification, 
+  updatePassword, 
+  User as FirebaseUser 
+} from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
@@ -94,7 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const resetTimer = () => {
       if (inactivityTimeout.current) clearTimeout(inactivityTimeout.current);
       inactivityTimeout.current = setTimeout(() => {
-        signOut();
+        logout();
       }, 5 * 60 * 1000); // 5 minutes
     };
     // Listen for user activity
@@ -131,8 +139,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Sanitize input
       const sanitizedEmail = sanitizeInput(email);
       
-      // Attempt login
-      await signInWithEmailAndPassword(auth, sanitizedEmail, password);
+      // Attempt login using Firebase Auth
+      const userCredential = await signInWithEmailAndPassword(auth, sanitizedEmail, password);
       
       // Log successful login
       await securityService.logLoginAttempt(sanitizedEmail, true);
