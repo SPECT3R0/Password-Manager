@@ -1,10 +1,25 @@
-import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { AuthContextType, User } from '../types';
 import { auth, db } from '../lib/firebase';
-import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut, sendEmailVerification } from 'firebase/auth';
+import { onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut as firebaseSignOut, sendEmailVerification, updatePassword, User as FirebaseUser } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
+import { validateEmail, validatePassword as validatePasswordInput, sanitizeInput } from '../lib/validation';
+import { securityService } from '../lib/security';
+
+interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  error: string | null;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<void>;
+  logout: () => Promise<void>;
+  changePassword: (newPassword: string) => Promise<void>;
+  setup2FA: () => Promise<string>;
+  verify2FA: (token: string) => Promise<void>;
+  disable2FA: () => Promise<void>;
+}
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -25,9 +40,10 @@ const validatePassword = (password: string): { isValid: boolean; message: string
   return { isValid: true, message: 'Password is valid' };
 };
 
-export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const inactivityTimeout = useRef<NodeJS.Timeout | null>(null);
 
   // Listen for Firebase Auth state changes
@@ -96,91 +112,117 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     };
   }, []);
 
-  const signIn = async (email: string, password: string, token?: string) => {
+  const login = async (email: string, password: string) => {
     try {
-      // Sign in with Firebase Auth
-      const userCredential = await signInWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
-
-      if (!firebaseUser) throw new Error('No user found in authentication system.');
-
-      // Get user profile
-      const userDocRef = doc(db, 'users', firebaseUser.uid);
-      const userDoc = await getDoc(userDocRef);
-
-      if (!userDoc.exists()) throw new Error('User profile not found.');
-
-      const userData = userDoc.data();
-
-      // Check 2FA if enabled
-      if (userData?.two_factor_enabled) {
-        if (!token) {
-          throw new Error('2FA_REQUIRED');
-        }
-        const isValid = authenticator.verify({
-          token,
-          secret: userData.two_factor_secret,
-        });
-        if (!isValid) {
-          throw new Error('Invalid 2FA token');
-        }
+      setError(null);
+      
+      // Validate input
+      const emailValidation = validateEmail(email);
+      if (!emailValidation.isValid) {
+        throw new Error(emailValidation.errors[0]);
       }
 
-      // Set user context
-      setUser({
-        id: firebaseUser.uid,
-        email: firebaseUser.email!,
-        created_at: userData.created_at,
-        two_factor_secret: userData.two_factor_secret || undefined,
-        two_factor_enabled: userData.two_factor_enabled,
-      });
-    } catch (error) {
-      throw new Error(error instanceof Error ? error.message : 'Unexpected error during sign in');
+      // Check login attempts
+      const { allowed, remainingAttempts } = securityService.checkLoginAttempts(email);
+      if (!allowed) {
+        throw new Error(`Too many login attempts. Please try again in 15 minutes.`);
+      }
+
+      // Sanitize input
+      const sanitizedEmail = sanitizeInput(email);
+      
+      // Attempt login
+      await signInWithEmailAndPassword(auth, sanitizedEmail, password);
+      
+      // Log successful login
+      await securityService.logLoginAttempt(sanitizedEmail, true);
+    } catch (error: any) {
+      // Log failed login attempt
+      await securityService.logLoginAttempt(email, false);
+      
+      // Handle specific error cases
+      if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
+        setError('Invalid email or password');
+      } else if (error.code === 'auth/too-many-requests') {
+        setError('Too many login attempts. Please try again later.');
+      } else {
+        setError('An error occurred during login');
+      }
+      throw error;
     }
   };
 
-  const signUp = async (email: string, password: string) => {
+  const register = async (email: string, password: string) => {
     try {
-      // Validate password
-      const passwordValidation = validatePassword(password);
+      setError(null);
+      
+      // Validate input
+      const emailValidation = validateEmail(email);
+      const passwordValidation = validatePasswordInput(password);
+      
+      if (!emailValidation.isValid) {
+        throw new Error(emailValidation.errors[0]);
+      }
+      
       if (!passwordValidation.isValid) {
-        throw new Error(passwordValidation.message);
+        throw new Error(passwordValidation.errors[0]);
       }
 
-      // Check if email already exists - Firebase does this inherently but optional to check in Firestore
-      // (If needed, could query Firestore, but Firebase Auth signUp will error on duplicate anyway)
-
-      // Create user with Firebase Auth
-      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-      const firebaseUser = userCredential.user;
-
-      if (!firebaseUser) throw new Error('Failed to create user account');
-
-      // Create user profile in Firestore
-      await setDoc(doc(db, 'users', firebaseUser.uid), {
-        email,
-        two_factor_enabled: false,
-        two_factor_secret: null,
-        created_at: firebaseUser.metadata.creationTime || new Date().toISOString(),
+      // Sanitize input
+      const sanitizedEmail = sanitizeInput(email);
+      
+      // Create user
+      const userCredential = await createUserWithEmailAndPassword(auth, sanitizedEmail, password);
+      
+      // Log successful registration
+      await securityService.logSecurityEvent({
+        type: 'login',
+        details: 'New user registration',
       });
-
-      // Optionally, send email verification
-      if (firebaseUser.email) {
-        await sendEmailVerification(firebaseUser);
+    } catch (error: any) {
+      if (error.code === 'auth/email-already-in-use') {
+        setError('Email is already registered');
+      } else {
+        setError('An error occurred during registration');
       }
-
-      return { success: true, message: 'Account created successfully! Please check your email to verify your account.' };
-    } catch (error) {
-      return {
-        success: false,
-        message: error instanceof Error ? error.message : 'An unexpected error occurred',
-      };
+      throw error;
     }
   };
 
-  const signOut = async () => {
-    await firebaseSignOut(auth);
-    setUser(null);
+  const logout = async () => {
+    try {
+      await firebaseSignOut(auth);
+      await securityService.logSecurityEvent({
+        type: 'login',
+        details: 'User logged out',
+      });
+    } catch (error) {
+      setError('An error occurred during logout');
+      throw error;
+    }
+  };
+
+  const changePassword = async (newPassword: string) => {
+    try {
+      if (!user) throw new Error('No user logged in');
+      
+      // Validate new password
+      const passwordValidation = validatePasswordInput(newPassword);
+      if (!passwordValidation.isValid) {
+        throw new Error(passwordValidation.errors[0]);
+      }
+
+      const firebaseUser = auth.currentUser;
+      if (!firebaseUser) throw new Error('No user logged in');
+
+      await updatePassword(firebaseUser, newPassword);
+      
+      // Log password change
+      await securityService.logPasswordChange(user.id);
+    } catch (error: any) {
+      setError('An error occurred while changing password');
+      throw error;
+    }
   };
 
   const setup2FA = async () => {
@@ -241,9 +283,11 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       value={{
         user,
         loading,
-        signIn,
-        signUp,
-        signOut,
+        error,
+        login,
+        register,
+        logout,
+        changePassword,
         setup2FA,
         verify2FA,
         disable2FA,
@@ -252,10 +296,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       {children}
     </AuthContext.Provider>
   );
-};
+}
 
-export const useAuth = () => {
+export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within an AuthProvider');
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
   return context;
-};
+}

@@ -7,12 +7,12 @@ import { getFirestore, connectFirestoreEmulator } from "firebase/firestore";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyDvUStwQu2lPrsSAaTMb9x3oVNzp0KyGRA",
-  authDomain: "spect3r-spm.firebaseapp.com",
-  projectId: "spect3r-spm",
-  storageBucket: "spect3r-spm.appspot.com",
-  messagingSenderId: "647567100345",
-  appId: "1:647567100345:web:4b3e361a6a6273efe74e68"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 // Initialize Firebase
