@@ -5,7 +5,7 @@ pipeline {
         PYTHON_VERSION = '3.13'
         VENV_PATH = 'venv'
         SRC_PATH = 'src'
-        BASE_URL = 'http://localhost:3000'
+        BASE_URL = 'http://localhost:5173'
     }
 
     stages {
