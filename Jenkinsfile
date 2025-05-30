@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     environment {
-        PYTHON_VERSION = '3.9'
+        PYTHON_VERSION = '3.13'
         VENV_NAME = 'venv'
         BASE_URL = 'http://localhost:3000'
         WORKSPACE = pwd()
@@ -38,7 +38,7 @@ pipeline {
                     
                     echo Installing dependencies...
                     python -m pip install --upgrade pip
-                    pip install -r requirements.txt
+                    python -m pip install --no-cache-dir -r requirements.txt
                     if errorlevel 1 (
                         echo Failed to install dependencies
                         exit /b 1
@@ -63,8 +63,8 @@ pipeline {
                     )
                     
                     echo Running linting checks...
-                    flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-                    black . --check
+                    python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+                    python -m black . --check
                 '''
             }
         }
@@ -85,7 +85,7 @@ pipeline {
                     )
                     
                     echo Running tests...
-                    pytest -v --cov=. --cov-report=html --cov-report=xml --html=test_report.html
+                    python -m pytest -v --cov=. --cov-report=html --cov-report=xml --html=test_report.html
                 '''
             }
             post {
