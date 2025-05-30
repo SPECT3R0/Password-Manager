@@ -12,29 +12,49 @@ pipeline {
         stage('Setup') {
             steps {
                 bat '''
-                    echo Creating Python virtual environment...
+                    echo Current directory: %CD%
+                    echo Workspace: %WORKSPACE%
+                    echo Python version:
+                    python --version
+                    echo Creating virtual environment in: %%VENV_NAME%%
+                    
                     if exist %%VENV_NAME%% (
-                        echo Virtual environment already exists, removing...
+                        echo Removing existing virtual environment...
                         rmdir /s /q %%VENV_NAME%%
                     )
                     
+                    echo Creating new virtual environment...
                     python -m venv %%VENV_NAME%%
                     if errorlevel 1 (
                         echo Failed to create virtual environment
                         exit /b 1
                     )
                     
-                    echo Activating virtual environment...
-                    if not exist %%VENV_NAME%%\\Scripts\\activate.bat (
-                        echo Virtual environment activation script not found
+                    echo Verifying virtual environment structure...
+                    if not exist %%VENV_NAME%% (
+                        echo Virtual environment directory not created
                         exit /b 1
                     )
                     
+                    if not exist %%VENV_NAME%%\\Scripts (
+                        echo Scripts directory not found in virtual environment
+                        exit /b 1
+                    )
+                    
+                    if not exist %%VENV_NAME%%\\Scripts\\activate.bat (
+                        echo activate.bat not found in Scripts directory
+                        exit /b 1
+                    )
+                    
+                    echo Activating virtual environment...
                     call %%VENV_NAME%%\\Scripts\\activate.bat
                     if errorlevel 1 (
                         echo Failed to activate virtual environment
                         exit /b 1
                     )
+                    
+                    echo Verifying Python path after activation...
+                    where python
                     
                     echo Installing dependencies...
                     python -m pip install --upgrade pip
@@ -43,6 +63,9 @@ pipeline {
                         echo Failed to install dependencies
                         exit /b 1
                     )
+                    
+                    echo Verifying installed packages...
+                    pip list
                 '''
             }
         }
@@ -50,6 +73,7 @@ pipeline {
         stage('Lint') {
             steps {
                 bat '''
+                    echo Current directory: %CD%
                     echo Activating virtual environment for linting...
                     if not exist %%VENV_NAME%%\\Scripts\\activate.bat (
                         echo Virtual environment activation script not found
@@ -72,6 +96,7 @@ pipeline {
         stage('Test') {
             steps {
                 bat '''
+                    echo Current directory: %CD%
                     echo Activating virtual environment for testing...
                     if not exist %%VENV_NAME%%\\Scripts\\activate.bat (
                         echo Virtual environment activation script not found
@@ -113,6 +138,7 @@ pipeline {
         stage('Build') {
             steps {
                 bat '''
+                    echo Current directory: %CD%
                     echo Installing Node.js dependencies...
                     npm install
                     if errorlevel 1 (
@@ -136,6 +162,7 @@ pipeline {
             }
             steps {
                 bat '''
+                    echo Current directory: %CD%
                     echo Deploying to production...
                     REM Add your deployment commands here
                 '''
