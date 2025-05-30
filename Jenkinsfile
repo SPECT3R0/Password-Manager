@@ -10,9 +10,9 @@ pipeline {
     stages {
         stage('Setup') {
             steps {
-                sh '''
-                    python -m venv ${VENV_NAME}
-                    . ${VENV_NAME}/bin/activate
+                bat '''
+                    python -m venv %%VENV_NAME%%
+                    call %%VENV_NAME%%\\Scripts\\activate
                     pip install -r requirements.txt
                 '''
             }
@@ -20,8 +20,8 @@ pipeline {
 
         stage('Lint') {
             steps {
-                sh '''
-                    . ${VENV_NAME}/bin/activate
+                bat '''
+                    call %%VENV_NAME%%\\Scripts\\activate
                     flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
                     black . --check
                 '''
@@ -30,8 +30,8 @@ pipeline {
 
         stage('Test') {
             steps {
-                sh '''
-                    . ${VENV_NAME}/bin/activate
+                bat '''
+                    call %%VENV_NAME%%\\Scripts\\activate
                     pytest -v --cov=. --cov-report=html --cov-report=xml --html=test_report.html
                 '''
             }
@@ -59,8 +59,7 @@ pipeline {
 
         stage('Build') {
             steps {
-                sh '''
-                    . ${VENV_NAME}/bin/activate
+                bat '''
                     npm install
                     npm run build
                 '''
@@ -72,9 +71,9 @@ pipeline {
                 branch 'main'
             }
             steps {
-                sh '''
-                    echo "Deploying to production..."
-                    # Add your deployment commands here
+                bat '''
+                    echo Deploying to production...
+                    REM Add your deployment commands here
                 '''
             }
         }
