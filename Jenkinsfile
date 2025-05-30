@@ -3,9 +3,9 @@ pipeline {
 
     environment {
         PYTHON_VERSION = '3.13'
-        VENV_NAME = 'venv'
+        VENV_PATH = 'venv'
+        SRC_PATH = 'src'
         BASE_URL = 'http://localhost:3000'
-        // WORKSPACE = pwd()   // remove this — pwd() is Groovy, cannot assign directly here
     }
 
     stages {
@@ -13,56 +13,43 @@ pipeline {
             steps {
                 bat '''
                     echo Current directory: %CD%
-                    echo Workspace: %CD%
                     echo Python version:
                     python --version
-                    echo Creating virtual environment in: %VENV_NAME%
+                    echo Creating virtual environment in: %VENV_PATH%
                     
-                    if exist %VENV_NAME% (
+                    if exist %VENV_PATH% (
                         echo Removing existing virtual environment...
-                        rmdir /s /q %VENV_NAME%
+                        rmdir /s /q %VENV_PATH%
                     )
                     
                     echo Creating new virtual environment...
-                    python -m venv %VENV_NAME%
-                    if errorlevel 1 (
-                        echo Failed to create virtual environment
-                        exit /b 1
-                    )
+                    python -m venv %VENV_PATH% || exit /b 1
                     
                     echo Verifying virtual environment structure...
-                    if not exist %VENV_NAME% (
+                    if not exist %VENV_PATH% (
                         echo Virtual environment directory not created
                         exit /b 1
                     )
                     
-                    if not exist %VENV_NAME%\\Scripts (
+                    if not exist %VENV_PATH%\\Scripts (
                         echo Scripts directory not found in virtual environment
                         exit /b 1
                     )
                     
-                    if not exist %VENV_NAME%\\Scripts\\activate.bat (
+                    if not exist %VENV_PATH%\\Scripts\\activate.bat (
                         echo activate.bat not found in Scripts directory
                         exit /b 1
                     )
                     
                     echo Activating virtual environment...
-                    call %VENV_NAME%\\Scripts\\activate.bat
-                    if errorlevel 1 (
-                        echo Failed to activate virtual environment
-                        exit /b 1
-                    )
+                    call %VENV_PATH%\\Scripts\\activate.bat || exit /b 1
                     
                     echo Verifying Python path after activation...
                     where python
                     
                     echo Installing dependencies...
-                    python -m pip install --upgrade pip
-                    python -m pip install --no-cache-dir -r requirements.txt
-                    if errorlevel 1 (
-                        echo Failed to install dependencies
-                        exit /b 1
-                    )
+                    python -m pip install --upgrade pip || exit /b 1
+                    python -m pip install --no-cache-dir -r requirements.txt || exit /b 1
                     
                     echo Verifying installed packages...
                     pip list
@@ -75,20 +62,19 @@ pipeline {
                 bat '''
                     echo Current directory: %CD%
                     echo Activating virtual environment for linting...
-                    if not exist %VENV_NAME%\\Scripts\\activate.bat (
+                    if not exist %VENV_PATH%\\Scripts\\activate.bat (
                         echo Virtual environment activation script not found
                         exit /b 1
                     )
                     
-                    call %VENV_NAME%\\Scripts\\activate.bat
-                    if errorlevel 1 (
-                        echo Failed to activate virtual environment
-                        exit /b 1
-                    )
+                    call %VENV_PATH%\\Scripts\\activate.bat || exit /b 1
                     
                     echo Running linting checks...
-                    python -m flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-                    python -m black . --check
+                    echo Running flake8 on %SRC_PATH%...
+                    python -m flake8 %SRC_PATH% || exit /b 1
+                    
+                    echo Running black check...
+                    python -m black --check %SRC_PATH% || exit /b 1
                 '''
             }
         }
@@ -98,19 +84,15 @@ pipeline {
                 bat '''
                     echo Current directory: %CD%
                     echo Activating virtual environment for testing...
-                    if not exist %VENV_NAME%\\Scripts\\activate.bat (
+                    if not exist %VENV_PATH%\\Scripts\\activate.bat (
                         echo Virtual environment activation script not found
                         exit /b 1
                     )
                     
-                    call %VENV_NAME%\\Scripts\\activate.bat
-                    if errorlevel 1 (
-                        echo Failed to activate virtual environment
-                        exit /b 1
-                    )
+                    call %VENV_PATH%\\Scripts\\activate.bat || exit /b 1
                     
                     echo Running tests...
-                    python -m pytest -v --cov=. --cov-report=html --cov-report=xml --html=test_report.html
+                    python -m pytest -v --cov=%SRC_PATH% --cov-report=html --cov-report=xml --html=test_report.html || exit /b 1
                 '''
             }
             post {
@@ -140,18 +122,10 @@ pipeline {
                 bat '''
                     echo Current directory: %CD%
                     echo Installing Node.js dependencies...
-                    npm install
-                    if errorlevel 1 (
-                        echo Failed to install Node.js dependencies
-                        exit /b 1
-                    )
+                    npm install || exit /b 1
                     
                     echo Building application...
-                    npm run build
-                    if errorlevel 1 (
-                        echo Failed to build application
-                        exit /b 1
-                    )
+                    npm run build || exit /b 1
                 '''
             }
         }
@@ -181,4 +155,4 @@ pipeline {
             echo 'Pipeline failed!'
         }
     }
-}
+} 
