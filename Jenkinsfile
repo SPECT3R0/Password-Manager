@@ -33,15 +33,6 @@ pipeline {
             }
         }
 
-        stage('Start Dev Server') {
-            steps {
-                bat """
-                    echo Starting development server for tests and DAST...
-                    start /B npm run dev
-                    timeout /t 20 /nobreak
-                """
-            }
-        }
 
         stage('Test') {
             steps {
