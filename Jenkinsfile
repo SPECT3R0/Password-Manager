@@ -16,7 +16,7 @@ pipeline {
                     echo Installing Python dependencies...
                     if exist %VENV_PATH% rmdir /s /q %VENV_PATH%
                     python -m venv %VENV_PATH% || exit /b 1
-                    call %VENV_PATH%\Scripts\activate.bat || exit /b 1
+                    call %VENV_PATH%\\Scripts\\activate.bat || exit /b 1
                     python -m pip install --upgrade pip
                     pip install -r requirements.txt || exit /b 1
                 """
@@ -26,7 +26,7 @@ pipeline {
         stage('Lint') {
             steps {
                 bat """
-                    call %VENV_PATH%\Scripts\activate.bat || exit /b 1
+                    call %VENV_PATH%\\Scripts\\activate.bat || exit /b 1
                     python -m flake8 %SRC_PATH% || exit /b 1
                     python -m black --check %SRC_PATH% || exit /b 1
                 """
@@ -46,7 +46,7 @@ pipeline {
         stage('Test') {
             steps {
                 bat """
-                    call %VENV_PATH%\Scripts\activate.bat || exit /b 1
+                    call %VENV_PATH%\\Scripts\\activate.bat || exit /b 1
                     python -m pytest -v --cov=%SRC_PATH% --cov-report=html:htmlcov --cov-report=xml --html=test_report.html || exit /b 1
                 """
             }
@@ -77,7 +77,7 @@ pipeline {
                 bat """
                     echo Running Snyk SAST scan...
                     snyk test --all-projects --json > snyk-results.json || exit /b 1
-                    node -e "const data = require('./snyk-results.json'); const critical = (data.vulnerabilities || []).filter(v => v.severity === 'critical').length; const high = (data.vulnerabilities || []).filter(v => v.severity === 'high').length; if (critical > 0 || high > 0) { console.error(`\n❌ Found ${critical} critical and ${high} high vulnerabilities`); process.exit(1); } console.log('✅ No critical or high severity issues found.');"
+                    node -e "const data = require('./snyk-results.json'); const critical = (data.vulnerabilities || []).filter(v => v.severity === 'critical').length; const high = (data.vulnerabilities || []).filter(v => v.severity === 'high').length; if (critical > 0 || high > 0) { console.error(\"\\n❌ Found \" + critical + \" critical and \" + high + \" high vulnerabilities\"); process.exit(1); } console.log('✅ No critical or high severity issues found.');"
                 """
             }
         }
