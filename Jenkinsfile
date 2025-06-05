@@ -6,53 +6,19 @@ pipeline {
         VENV_PATH = 'venv'
         SRC_PATH = 'src'
         BASE_URL = 'http://localhost:5173'
+        ZAP_PATH = 'E:\\Zed Attack Proxy\\zap.bat'
     }
 
     stages {
         stage('Setup') {
             steps {
                 bat '''
-                    echo Current directory: %CD%
-                    echo Python version:
-                    python --version
-                    echo Creating virtual environment in: %VENV_PATH%
-                    
-                    if exist %VENV_PATH% (
-                        echo Removing existing virtual environment...
-                        rmdir /s /q %VENV_PATH%
-                    )
-                    
-                    echo Creating new virtual environment...
+                    echo Installing Python dependencies...
+                    if exist %VENV_PATH% rmdir /s /q %VENV_PATH%
                     python -m venv %VENV_PATH% || exit /b 1
-                    
-                    echo Verifying virtual environment structure...
-                    if not exist %VENV_PATH% (
-                        echo Virtual environment directory not created
-                        exit /b 1
-                    )
-                    
-                    if not exist %VENV_PATH%\\Scripts (
-                        echo Scripts directory not found in virtual environment
-                        exit /b 1
-                    )
-                    
-                    if not exist %VENV_PATH%\\Scripts\\activate.bat (
-                        echo activate.bat not found in Scripts directory
-                        exit /b 1
-                    )
-                    
-                    echo Activating virtual environment...
-                    call %VENV_PATH%\\Scripts\\activate.bat || exit /b 1
-                    
-                    echo Verifying Python path after activation...
-                    where python
-                    
-                    echo Installing dependencies...
-                    python -m pip install --upgrade pip || exit /b 1
-                    python -m pip install --no-cache-dir -r requirements.txt || exit /b 1
-                    
-                    echo Verifying installed packages...
-                    pip list
+                    call %VENV_PATH%\Scripts\activate.bat || exit /b 1
+                    python -m pip install --upgrade pip
+                    pip install -r requirements.txt || exit /b 1
                 '''
             }
         }
@@ -60,20 +26,8 @@ pipeline {
         stage('Lint') {
             steps {
                 bat '''
-                    echo Current directory: %CD%
-                    echo Activating virtual environment for linting...
-                    if not exist %VENV_PATH%\\Scripts\\activate.bat (
-                        echo Virtual environment activation script not found
-                        exit /b 1
-                    )
-                    
-                    call %VENV_PATH%\\Scripts\\activate.bat || exit /b 1
-                    
-                    echo Running linting checks...
-                    echo Running flake8 on %SRC_PATH%...
+                    call %VENV_PATH%\Scripts\activate.bat || exit /b 1
                     python -m flake8 %SRC_PATH% || exit /b 1
-                    
-                    echo Running black check...
                     python -m black --check %SRC_PATH% || exit /b 1
                 '''
             }
@@ -82,17 +36,8 @@ pipeline {
         stage('Test') {
             steps {
                 bat '''
-                    echo Current directory: %CD%
-                    echo Activating virtual environment for testing...
-                    if not exist %VENV_PATH%\\Scripts\\activate.bat (
-                        echo Virtual environment activation script not found
-                        exit /b 1
-                    )
-                    
-                    call %VENV_PATH%\\Scripts\\activate.bat || exit /b 1
-                    
-                    echo Running tests...
-                    python -m pytest -v --cov=%SRC_PATH% --cov-report=html --cov-report=xml --html=test_report.html || exit /b 1
+                    call %VENV_PATH%\Scripts\activate.bat || exit /b 1
+                    python -m pytest -v --cov=%SRC_PATH% --cov-report=html:htmlcov --cov-report=xml --html=test_report.html || exit /b 1
                 '''
             }
             post {
@@ -117,14 +62,45 @@ pipeline {
             }
         }
 
+        stage('SAST - Snyk') {
+            steps {
+                bat '''
+                    echo Running Snyk SAST scan...
+                    snyk test --all-projects --json > snyk-results.json || exit /b 1
+                    node -e "const data = require('./snyk-results.json'); const critical = (data.vulnerabilities || []).filter(v => v.severity === 'critical').length; const high = (data.vulnerabilities || []).filter(v => v.severity === 'high').length; if (critical > 0 || high > 0) { console.error(`\n❌ Found ${critical} critical and ${high} high vulnerabilities`); process.exit(1); } console.log('✅ No critical or high severity issues found.');"
+                '''
+            }
+        }
+
+        stage('Start App for DAST') {
+            steps {
+                bat '''
+                    echo Starting development server for DAST...
+                    start /B npm run dev
+                    timeout /t 15 /nobreak
+                '''
+            }
+        }
+
+        stage('DAST - OWASP ZAP') {
+            steps {
+                bat '''
+                    echo Running OWASP ZAP DAST scan...
+                    if exist "%ZAP_PATH%" (
+                        "%ZAP_PATH%" quick-scan --self-contained --start-options "-config api.disablekey=true" --spider %BASE_URL% --scan || exit /b 1
+                    ) else (
+                        echo ZAP CLI not found at %ZAP_PATH%
+                        exit /b 1
+                    )
+                '''
+            }
+        }
+
         stage('Build') {
             steps {
                 bat '''
-                    echo Current directory: %CD%
-                    echo Installing Node.js dependencies...
+                    echo Installing frontend dependencies and building app...
                     npm install || exit /b 1
-                    
-                    echo Building application...
                     npm run build || exit /b 1
                 '''
             }
@@ -135,24 +111,25 @@ pipeline {
                 branch 'main'
             }
             steps {
-                bat '''
-                    echo Current directory: %CD%
-                    echo Deploying to production...
-                    REM Add your deployment commands here
-                '''
+                withCredentials([string(credentialsId: 'FIREBASE_CI_TOKEN', variable: 'FB_TOKEN')]) {
+                    bat '''
+                        echo Deploying to Firebase hosting...
+                        call firebase deploy --token %FB_TOKEN% --only hosting || exit /b 1
+                    '''
+                }
             }
         }
-    }
+    } 
 
     post {
         always {
             cleanWs()
         }
         success {
-            echo 'Pipeline completed successfully!'
+            echo '✅ CI/CD Pipeline completed successfully!'
         }
         failure {
-            echo 'Pipeline failed!'
+            echo '❌ Pipeline failed due to issues.'
         }
     }
-} 
+}
