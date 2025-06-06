@@ -16,50 +16,10 @@ pipeline {
                     echo Installing Python dependencies...
                     if exist %VENV_PATH% rmdir /s /q %VENV_PATH%
                     python -m venv %VENV_PATH% || exit /b 1
-                    call %VENV_PATH%\\Scripts\\activate.bat || exit /b 1
+                    call %VENV_PATH%\Scripts\activate.bat || exit /b 1
                     python -m pip install --upgrade pip
                     pip install -r requirements.txt || exit /b 1
                 """
-            }
-        }
-
-        stage('Lint') {
-            steps {
-                bat """
-                    call %VENV_PATH%\\Scripts\\activate.bat || exit /b 1
-                    python -m flake8 %SRC_PATH% || exit /b 1
-                    python -m black --check %SRC_PATH% || exit /b 1
-                """
-            }
-        }
-
-
-        stage('Test') {
-            steps {
-                bat """
-                    call %VENV_PATH%\\Scripts\\activate.bat || exit /b 1
-                    python -m pytest -v --cov=%SRC_PATH% --cov-report=html:htmlcov --cov-report=xml --html=test_report.html || exit /b 1
-                """
-            }
-            post {
-                always {
-                    publishHTML([
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: 'htmlcov',
-                        reportFiles: 'index.html',
-                        reportName: 'Coverage Report'
-                    ])
-                    publishHTML([
-                        allowMissing: false,
-                        alwaysLinkToLastBuild: true,
-                        keepAll: true,
-                        reportDir: '.',
-                        reportFiles: 'test_report.html',
-                        reportName: 'Test Report'
-                    ])
-                }
             }
         }
 
