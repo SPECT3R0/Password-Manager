@@ -14,8 +14,7 @@ stage('SAST - Snyk') {
             node -e "const data = require('./snyk-results.json'); const critical = (data.vulnerabilities || []).filter(v => v.severity === 'critical').length; const high = (data.vulnerabilities || []).filter(v => v.severity === 'high').length; if (critical > 0 || high > 0) { console.error('❌ Found ' + critical + ' critical and ' + high + ' high vulnerabilities'); process.exit(1); } else { console.log('✅ No critical or high severity issues found.'); }"
         """
     }
-
-
+}
         stage('DAST - OWASP ZAP') {
             steps {
                 bat """
