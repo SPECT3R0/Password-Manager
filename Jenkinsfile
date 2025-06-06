@@ -3,7 +3,7 @@ pipeline {
 
     environment {
         BASE_URL = 'http://localhost:5173'
-        ZAP_PATH = 'E:\\Zed Attack Proxy\\zap.bat'
+        ZAP_PATH = 'E:/Zed Attack Proxy/zap.bat'
     }
 
     stages {
