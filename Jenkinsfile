@@ -38,11 +38,13 @@ pipeline {
                             call "${env.SNYK_HTML_CMD}" -i "${jsonReport}" -o "${htmlReport}"
                         """
 
-                        def snykResults = readJSON file: jsonReport
-                        def vulns = snykResults.vulnerabilities ?: []
-                        echo "📊 Snyk Found ${vulns.size()} Vulnerabilities:"
-                        vulns.each { vuln ->
-                            echo "  ${vuln.severity.toUpperCase()}: ${vuln.packageName}@${vuln.version} - ${vuln.title}"
+                        if (fileExists(jsonReport)) {
+                            def snykResults = readJSON file: jsonReport
+                            def vulns = snykResults.vulnerabilities ?: []
+                            echo "📊 Snyk Found ${vulns.size()} Vulnerabilities:"
+                            vulns.each { vuln ->
+                                echo "  ${vuln.severity.toUpperCase()}: ${vuln.packageName}@${vuln.version} - ${vuln.title}"
+                            }
                         }
 
                     } catch (Exception e) {
@@ -61,7 +63,7 @@ pipeline {
                         bat """
                             echo Starting ZAP DAST Scan...
                             cd /d "E:/Zed Attack Proxy"
-                            .\zap.bat quick-scan --self-contained --start-options "-config api.disablekey=true" --spider "${env.BASE_URL}" --scan -r "${zapReport}"
+                            zap.bat quick-scan --self-contained --start-options "-config api.disablekey=true" --spider "${env.BASE_URL}" --scan -r "${zapReport}"
                         """
 
                         if (fileExists(zapReport)) {
