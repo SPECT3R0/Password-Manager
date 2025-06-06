@@ -9,11 +9,79 @@ pipeline {
     stages {
         stage('SAST - Snyk') {
             steps {
-                bat """
-                    echo Running Snyk SAST scan...
-                    call C:\\Users\\Junaid\\AppData\\Roaming\\npm\\snyk.cmd test --all-projects --json > snyk-results.json || exit /b 1
-                    node -e "const data = require('./snyk-results.json'); const critical = (data.vulnerabilities || []).filter(v => v.severity === 'critical').length; const high = (data.vulnerabilities || []).filter(v => v.severity === 'high').length; if (critical > 0 || high > 0) { console.error('❌ Found ' + critical + ' critical and ' + high + ' high vulnerabilities'); process.exit(1); } else { console.log('✅ No critical or high severity issues found.'); }"
-                """
+                script {
+                    try {
+                        // Run Snyk scan and save results
+                        bat """
+                            echo Running Snyk SAST scan...
+                            call C:\\Users\\Junaid\\AppData\\Roaming\\npm\\snyk.cmd test --all-projects --json > snyk-results.json
+                        """
+                        
+                        // Process results with detailed output
+                        def result = bat(
+                            script: """
+                                node -e "
+                                    const fs = require('fs');
+                                    try {
+                                        const data = JSON.parse(fs.readFileSync('./snyk-results.json'));
+                                        const critical = (data.vulnerabilities || []).filter(v => v.severity === 'critical');
+                                        const high = (data.vulnerabilities || []).filter(v => v.severity === 'high');
+                                        
+                                        // Print summary
+                                        console.log('\\n📊 Snyk Scan Results:');
+                                        console.log('✅ Low severity: ' + (data.vulnerabilities || []).filter(v => v.severity === 'low').length);
+                                        console.log('⚠️ Medium severity: ' + (data.vulnerabilities || []).filter(v => v.severity === 'medium').length);
+                                        console.log('❗ High severity: ' + high.length);
+                                        console.log('❌ Critical severity: ' + critical.length);
+                                        
+                                        // Print details of high/critical vulnerabilities
+                                        if (critical.length > 0 || high.length > 0) {
+                                            console.log('\\n🔍 Found critical/high vulnerabilities:');
+                                            
+                                            critical.forEach(v => {
+                                                console.log('\\n🛑 CRITICAL: ' + v.id);
+                                                console.log('   Package: ' + v.packageName + '@' + v.version);
+                                                console.log('   Vulnerability: ' + v.title);
+                                                console.log('   Info: ' + v.description.substring(0, 100) + '...');
+                                                console.log('   Fix: ' + (v.fixedIn || ['No fix available']).join(', '));
+                                            });
+                                            
+                                            high.forEach(v => {
+                                                console.log('\\n⚠️ HIGH: ' + v.id);
+                                                console.log('   Package: ' + v.packageName + '@' + v.version);
+                                                console.log('   Vulnerability: ' + v.title);
+                                                console.log('   Info: ' + v.description.substring(0, 100) + '...');
+                                                console.log('   Fix: ' + (v.fixedIn || ['No fix available']).join(', '));
+                                            });
+                                            
+                                            process.exit(1);
+                                        } else {
+                                            console.log('\\n🎉 No critical or high severity vulnerabilities found!');
+                                        }
+                                    } catch (e) {
+                                        console.error('❌ Error processing Snyk results:', e.message);
+                                        process.exit(1);
+                                    }
+                                "
+                            """,
+                            returnStatus: true
+                        )
+                        
+                        if (result != 0) {
+                            error("Snyk scan found critical/high vulnerabilities - check logs for details")
+                        }
+                    } catch (e) {
+                        echo "❌ Snyk scan failed: ${e.getMessage()}"
+                        // Archive the results file even if the scan fails
+                        archiveArtifacts artifacts: 'snyk-results.json', allowEmptyArchive: true
+                        error("SAST check failed due to vulnerabilities")
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: 'snyk-results.json', allowEmptyArchive: true
+                }
             }
         }
 
