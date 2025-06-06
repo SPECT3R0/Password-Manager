@@ -2,33 +2,17 @@ pipeline {
     agent any
 
     environment {
-        PYTHON_VERSION = '3.13'
-        VENV_PATH = 'venv'
-        SRC_PATH = 'src'
         BASE_URL = 'http://localhost:5173'
-        ZAP_PATH = 'E:/Zed Attack Proxy/zap.bat'
+        ZAP_PATH = 'E:\\Zed Attack Proxy\\zap.bat'
     }
 
     stages {
-        stage('Setup') {
-            steps {
-                bat """
-                    echo Installing Python dependencies...
-                    if exist %VENV_PATH% rmdir /s /q %VENV_PATH%
-                    python -m venv %VENV_PATH% || exit /b 1
-                    call %VENV_PATH%\Scripts\activate.bat || exit /b 1
-                    python -m pip install --upgrade pip
-                    pip install -r requirements.txt || exit /b 1
-                """
-            }
-        }
-
         stage('SAST - Snyk') {
             steps {
                 bat """
                     echo Running Snyk SAST scan...
                     snyk test --all-projects --json > snyk-results.json || exit /b 1
-                    node -e "const data = require('./snyk-results.json'); const critical = (data.vulnerabilities || []).filter(v => v.severity === 'critical').length; const high = (data.vulnerabilities || []).filter(v => v.severity === 'high').length; if (critical > 0 || high > 0) { console.error(\"\\n❌ Found \" + critical + \" critical and \" + high + \" high vulnerabilities\"); process.exit(1); } console.log('✅ No critical or high severity issues found.');"
+                    node -e "const data = require('./snyk-results.json'); const critical = (data.vulnerabilities || []).filter(v => v.severity === 'critical').length; const high = (data.vulnerabilities || []).filter(v => v.severity === 'high').length; if (critical > 0 || high > 0) { console.error('❌ Found ' + critical + ' critical and ' + high + ' high vulnerabilities'); process.exit(1); } else { console.log('✅ No critical or high severity issues found.'); }"
                 """
             }
         }
@@ -40,7 +24,7 @@ pipeline {
                     if exist "%ZAP_PATH%" (
                         "%ZAP_PATH%" quick-scan --self-contained --start-options "-config api.disablekey=true" --spider %BASE_URL% --scan || exit /b 1
                     ) else (
-                        echo ZAP CLI not found at %ZAP_PATH%
+                        echo ZAP not found at %ZAP_PATH%
                         exit /b 1
                     )
                 """
@@ -50,7 +34,7 @@ pipeline {
         stage('Build') {
             steps {
                 bat """
-                    echo Installing frontend dependencies and building app...
+                    echo Installing dependencies and building app...
                     npm install || exit /b 1
                     npm run build || exit /b 1
                 """
@@ -64,7 +48,7 @@ pipeline {
             steps {
                 withCredentials([string(credentialsId: 'FIREBASE_CI_TOKEN', variable: 'FB_TOKEN')]) {
                     bat """
-                        echo Deploying to Firebase hosting...
+                        echo Deploying to Firebase...
                         call firebase deploy --token %FB_TOKEN% --only hosting || exit /b 1
                     """
                 }
