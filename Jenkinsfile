@@ -39,7 +39,7 @@ pipeline {
                             call "${env.SNYK_CMD}" test --all-projects --json > "${jsonReport}" 2>&1
                             call "${env.SNYK_HTML_CMD}" -i "${jsonReport}" -o "${htmlReport}"
                             echo === Vulnerability Summary === >> "${logFile}"
-                            type "${jsonReport}" | jq -r ".vulnerabilities[] | \"\(.severity | ascii_upcase): \(.packageName)@\(.version) - \(.title)\"" >> "${logFile}"
+                            type "${jsonReport}" | jq -r ".vulnerabilities[] | \"\\(.severity | ascii_upcase): \\(.packageName)@\\(.version) - \\(.title)\"" >> "${logFile}"
                         """
 
                         def snykResults = readJSON file: jsonReport
