@@ -2,24 +2,21 @@ pipeline {
     agent any
 
     environment {
-        PROJECT_ROOT = "E:\\SSDD Project\\project"
+        PROJECT_DIR = "E:\\SSDD Project\\project"
         ZAP_PATH = "E:\\Zed Attack Proxy\\zap.bat"
-        SNYK_CMD = "C:\\Users\\Junaid\\AppData\\Roaming\\npm\\snyk.cmd"
-        BASE_URL = "http://localhost:5173"  // Change to your app's URL
+        BASE_URL = "http://localhost:5173"  // Update if your app uses a different URL
     }
 
     stages {
-        stage('Initialize') {
+        stage('Initialize Workspace') {
             steps {
-                script {
-                    // Create results directory if not exists
-                    bat """
-                        if not exist "${PROJECT_ROOT}\\results" (
-                            mkdir "${PROJECT_ROOT}\\results"
-                            echo "✅ Created results directory at ${PROJECT_ROOT}\\results"
-                        )
-                    """
-                }
+                bat """
+                    if not exist "${PROJECT_DIR}\\results" (
+                        mkdir "${PROJECT_DIR}\\results"
+                        echo "✅ Created results directory at ${PROJECT_DIR}\\results"
+                    )
+                    dir "${PROJECT_DIR}\\results"
+                """
             }
         }
 
@@ -27,50 +24,64 @@ pipeline {
             steps {
                 script {
                     def timestamp = new Date().format('yyyyMMdd_HHmmss')
-                    def reportPath = "${PROJECT_ROOT}\\results\\snyk_sast_${timestamp}.json"
+                    def jsonReport = "${PROJECT_DIR}\\results\\snyk_sast_${timestamp}.json"
+                    def htmlReport = "${PROJECT_DIR}\\results\\snyk_report_${timestamp}.html"
 
                     bat """
                         echo "🔍 Running Snyk SAST scan..."
-                        pushd "${PROJECT_ROOT}"
-                        ${SNYK_CMD} test --all-projects --json > "${reportPath}"
-                        popd
-                        echo "📄 SAST results saved to ${reportPath}"
+                        cd /d "${PROJECT_DIR}"
+                        snyk test --all-projects --json > "${jsonReport}"
+                        snyk-to-html -i "${jsonReport}" -o "${htmlReport}"
+                        echo "📄 Reports generated:"
+                        echo "  - ${jsonReport}"
+                        echo "  - ${htmlReport}"
                     """
 
-                    // Parse and display summary
-                    def snykResults = readJSON file: reportPath
-                    def vulnCount = snykResults.vulnerabilities?.size() ?: 0
-                    echo "📊 Found ${vulnCount} vulnerabilities"
+                    // Fail build on critical/high vulnerabilities
+                    def snykResults = readJSON file: jsonReport
+                    def critical = snykResults.vulnerabilities.count { it.severity == 'critical' }
+                    def high = snykResults.vulnerabilities.count { it.severity == 'high' }
                     
-                    archiveArtifacts artifacts: "results/snyk_sast_${timestamp}.json"
+                    if (critical > 0 || high > 0) {
+                        error("❌ Found ${critical} critical and ${high} high vulnerabilities")
+                    }
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: "results/snyk_*${timestamp}.*"
                 }
             }
         }
 
-        stage('DAST - OWASP ZAP Scan') {
+        stage('DAST - OWASP ZAP') {
             steps {
                 script {
                     def timestamp = new Date().format('yyyyMMdd_HHmmss')
-                    def reportPath = "${PROJECT_ROOT}\\results\\zap_dast_${timestamp}.json"
+                    def zapReport = "${PROJECT_DIR}\\results\\zap_dast_${timestamp}.json"
 
                     bat """
-                        echo "🛡️ Running ZAP DAST scan..."
+                        echo "🛡️ Starting ZAP DAST scan..."
                         if exist "${ZAP_PATH}" (
+                            cd /d "${PROJECT_DIR}"
                             "${ZAP_PATH}" quick-scan --self-contained \\
                                 --start-options "-config api.disablekey=true" \\
                                 --spider "${BASE_URL}" \\
                                 --scan \\
-                                -r "${reportPath}" || (
+                                -r "${zapReport}" || (
                                 echo "⚠️ ZAP completed with findings"
                             )
                         ) else (
                             echo "❌ ZAP not found at ${ZAP_PATH}"
                             exit 1
                         )
-                        echo "📄 DAST results saved to ${reportPath}"
+                        echo "📄 DAST report saved to ${zapReport}"
                     """
-
-                    archiveArtifacts artifacts: "results/zap_dast_${timestamp}.json"
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: "results/zap_dast_*.json"
                 }
             }
         }
@@ -79,17 +90,19 @@ pipeline {
             steps {
                 script {
                     def timestamp = new Date().format('yyyyMMdd_HHmmss')
-                    def reportPath = "${PROJECT_ROOT}\\results\\dependency_check_${timestamp}.json"
+                    def depCheckReport = "${PROJECT_DIR}\\results\\depcheck_${timestamp}.json"
 
                     bat """
                         echo "🧩 Running Dependency-Check..."
-                        pushd "${PROJECT_ROOT}"
-                        dependency-check.bat --scan . --format JSON --out "${reportPath}"
-                        popd
-                        echo "📄 Dependency results saved to ${reportPath}"
+                        cd /d "${PROJECT_DIR}"
+                        dependency-check.bat --scan . --format JSON --out "${depCheckReport}"
+                        echo "📄 Dependency report saved to ${depCheckReport}"
                     """
-
-                    archiveArtifacts artifacts: "results/dependency_check_${timestamp}.json"
+                }
+            }
+            post {
+                always {
+                    archiveArtifacts artifacts: "results/depcheck_*.json"
                 }
             }
         }
@@ -98,28 +111,31 @@ pipeline {
     post {
         always {
             script {
-                // Generate combined report summary
+                // Summarize all reports
+                echo "📂 Scan Results Summary:"
                 bat """
-                    echo "📂 All scan results stored at ${PROJECT_ROOT}\\results:"
-                    dir "${PROJECT_ROOT}\\results"
+                    dir "${PROJECT_DIR}\\results"
                 """
 
-                // Optional: Generate HTML reports
+                // Generate combined HTML report (optional)
                 bat """
-                    pushd "${PROJECT_ROOT}"
-                    npm install -g snyk-to-html
-                    snyk-to-html -i results/snyk_sast_*.json -o results/snyk_report.html
-                    popd
+                    cd /d "${PROJECT_DIR}"
+                    type results\\snyk_sast_*.json results\\zap_dast_*.json results\\depcheck_*.json > results\\combined_report_${currentBuild.number}.log
                 """
-                archiveArtifacts artifacts: "results/snyk_report.html"
             }
         }
+        success {
+            echo "✅ All security scans completed successfully!"
+            slackSend color: 'good', message: "Security scans passed for ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+        }
         failure {
+            echo "❌ Pipeline failed due to security vulnerabilities"
+            slackSend color: 'danger', message: "Security scans failed for ${env.JOB_NAME} #${env.BUILD_NUMBER}"
             emailext (
-                subject: "🚨 ${env.JOB_NAME} - Build #${env.BUILD_NUMBER} Failed",
-                body: """Security scan failed for ${env.BUILD_URL}
-                        Check the attached reports for vulnerabilities.""",
-                attachmentsPattern: 'results/*.json'
+                subject: "🚨 ${env.JOB_NAME} - Vulnerabilities Detected",
+                body: """Check the reports at ${env.BUILD_URL}
+                        Vulnerabilities require immediate attention!""",
+                attachmentsPattern: 'results/*.json, results/*.html'
             )
         }
     }
