@@ -14,7 +14,7 @@ declare global {
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, verify2FA, signInWithGoogle } = useAuth();
+  const { login, verify2FA } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -72,8 +72,6 @@ export default function Login() {
     try {
       await verify2FA(twoFactorToken);
       navigate('/dashboard');
-    } catch (err: any) {
-      setTwoFactorError(err.message || 'Invalid 2FA token');
     } finally {
       setLoading(false);
     }
@@ -83,7 +81,8 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      await signInWithGoogle();
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
       navigate('/dashboard');
     } catch (err: any) {
       console.error("Google Sign-in Error:", err);
@@ -257,60 +256,51 @@ export default function Login() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200"
+                  className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-lg font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 transition-all duration-200"
                 >
                   {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Sign in'}
                 </button>
               </div>
 
-              <div className="text-sm text-center mt-4">
-                <Link
-                  to="/register"
-                  className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
-                >
-                  Don't have an account? Sign up
-                </Link>
+              <div className="text-center text-sm">
+                <p className="text-gray-600 dark:text-gray-400">
+                  Don't have an account? {' '}
+                  <Link
+                    to="/signup"
+                    className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
+                  >
+                    Sign up
+                  </Link>
+                </p>
               </div>
             </form>
           ) : (
             <form className="mt-8 space-y-6" onSubmit={handle2FASubmit} noValidate>
-              <div>
-                <label htmlFor="2fa-token" className="sr-only">
-                  Two-Factor Authentication Code
-                </label>
-                <input
-                  id="2fa-token"
-                  name="2fa-token"
-                  type="text"
-                  required
-                  className="appearance-none rounded-md relative block w-full px-3 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm bg-white dark:bg-gray-800"
-                  placeholder="Enter 2FA code"
-                  value={twoFactorToken}
-                  onChange={(e) => setTwoFactorToken(e.target.value)}
-                />
+              <div className="rounded-md shadow-sm -space-y-px">
+                <div className="relative">
+                  <KeyRound className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+                  <input
+                    id="two-factor-token"
+                    name="two-factor-token"
+                    type="text"
+                    autoComplete="off"
+                    required
+                    aria-label="2FA Token"
+                    className="appearance-none rounded-none relative block w-full px-12 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-gray-100 rounded-t-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm bg-white dark:bg-gray-800"
+                    placeholder="Enter 2FA Token"
+                    value={twoFactorToken}
+                    onChange={(e) => setTwoFactorToken(e.target.value)}
+                  />
+                </div>
               </div>
-
-              {twoFactorError && (
-                <div className="text-red-600 dark:text-red-400 text-sm">{twoFactorError}</div>
-              )}
-
-              <div>
+              {twoFactorError && <div className="text-red-600 dark:text-red-400 text-sm">{twoFactorError}</div>}
+              <div className="flex justify-center">
                 <button
                   type="submit"
                   disabled={loading}
-                  className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                  className="group relative flex justify-center py-3 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
-                  {loading ? 'Verifying...' : 'Verify'}
-                </button>
-              </div>
-
-              <div className="text-sm text-center">
-                <button
-                  type="button"
-                  onClick={() => setShow2FA(false)}
-                  className="font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 dark:hover:text-indigo-300"
-                >
-                  Back to sign in
+                  {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Verify Token'}
                 </button>
               </div>
             </form>

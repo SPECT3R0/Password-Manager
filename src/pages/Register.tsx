@@ -42,13 +42,9 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      const result = await register(email, password);
-      if (result.success) {
-        setSuccess(result.message);
-        setTimeout(() => navigate('/login'), 2000);
-      } else {
-        setError(result.message);
-      }
+      await register(email, password);
+      setSuccess('Registration successful! Please check your email for verification.');
+      setTimeout(() => navigate('/login'), 2000);
     } catch (err: any) {
       setError(err.message || 'Failed to register. Please try again.');
     } finally {

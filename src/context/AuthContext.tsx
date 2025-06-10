@@ -23,7 +23,7 @@ interface AuthContextType {
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
+  register: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
   setup2FA: () => Promise<string>;
@@ -190,7 +190,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         type: 'login',
         details: 'New user registration',
       });
-      return { success: true, message: 'Registration successful! Please check your email for verification.' };
     } catch (error: any) {
       let errorMessage = 'An error occurred during registration';
       if (error.code === 'auth/email-already-in-use') {
@@ -199,7 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         errorMessage = error.message; // Capture the specific Firebase error message
       }
       setError(errorMessage);
-      return { success: false, message: errorMessage };
+      throw error;
     }
   };
 
