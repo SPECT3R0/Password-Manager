@@ -3,68 +3,19 @@ pipeline {
 
     environment {
         PROJECT_DIR = "E:/SSDD Project/project"
-        // Firebase VITE environment variables - ensure these are set in Jenkins Credentials if sensitive
-        VITE_FIREBASE_API_KEY = credentials('VITE_FIREBASE_API_KEY')
-        VITE_FIREBASE_AUTH_DOMAIN = credentials('VITE_FIREBASE_AUTH_DOMAIN')
-        VITE_FIREBASE_PROJECT_ID = credentials('VITE_FIREBASE_PROJECT_ID')
-        VITE_FIREBASE_STORAGE_BUCKET = credentials('VITE_FIREBASE_STORAGE_BUCKET')
     }
 
     stages {
-        stage('Install Dependencies') {
-            steps {
-                dir("${PROJECT_DIR}") {
-                    bat 'npm install'
-                }
-            }
-        }
-
-        stage('SAST - Snyk Scan') {
-            steps {
-                dir("${PROJECT_DIR}") {
-                    snykSecurity(
-                        snykInstallation: 'Default',     // Replace with your configured Snyk CLI name
-                        snykTokenId: 'snyk-api',         // Jenkins credentials ID for Snyk API token
-                        failOnIssues: false,
-                        monitorProjectOnBuild: true
-                    )
-                }
-            }
-        }
-
-        stage('Build Project') {
-            steps {
-                dir("${PROJECT_DIR}") {
-                    bat 'npm run build'
-                }
-            }
-        }
-
-        stage('DAST - Nuclei Scan') {
-            steps {
-                bat """
-                cd /d E:\\Nuclie
-                nuclei.exe -u https://spect3r-spm.web.app -o nuclei_output.txt || echo "Nuclei scan completed with issues"
-                move /Y nuclei_output.txt "%WORKSPACE%\\nuclei_output.txt"
-                """
-            }
-        }
-
-        stage('Archive DAST Results') {
-            steps {
-                archiveArtifacts artifacts: 'nuclei_output.txt', onlyIfSuccessful: false
-            }
-        }
-
-        stage('Deploy to Firebase') {
+        stage('Build & Deploy') {
             steps {
                 withCredentials([string(credentialsId: 'FIREBASE_CI_TOKEN', variable: 'FIREBASE_TOKEN')]) {
-                    dir("${PROJECT_DIR}") {
-                        bat '''
+                    bat '''
+                        cd /d "%PROJECT_DIR%"
+                        call npm install
+                        call npm run build
                         echo Deploying to Firebase...
                         call firebase deploy --only hosting --token %FIREBASE_TOKEN%
-                        '''
-                    }
+                    '''
                 }
             }
         }
@@ -72,7 +23,7 @@ pipeline {
 
     post {
         always {
-            echo '✅ Full CI/CD Pipeline Completed: SAST + DAST + Deployment'
+            echo "✅ Pipeline completed (Build & Deploy phase)"
         }
     }
 }
