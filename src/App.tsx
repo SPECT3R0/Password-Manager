@@ -7,6 +7,7 @@ import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
 import Settings from './pages/Settings';
 import PrivateRoute from './components/PrivateRoute';
+import LandingPage from './pages/LandingPage';
 
 function App() {
   return (
@@ -16,8 +17,9 @@ function App() {
           <PasswordProvider>
             <div className="min-h-screen bg-gray-50 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
               <Routes>
+                <Route path="/" element={<LandingPage />} />
                 <Route path="/login" element={<Login />} />
-                <Route path="/register" element={<Register />} />
+                <Route path="/signup" element={<Register />} />
                 <Route path="/dashboard" element={
                   <PrivateRoute>
                     <Dashboard />
@@ -28,8 +30,6 @@ function App() {
                     <Settings />
                   </PrivateRoute>
                 } />
-                  <Route path="/" element={<Navigate to="/login" replace />} />
-
               </Routes>
             </div>
           </PasswordProvider>

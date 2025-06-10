@@ -21,7 +21,7 @@ interface AuthContextType {
   loading: boolean;
   error: string | null;
   login: (email: string, password: string) => Promise<void>;
-  register: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string) => Promise<{ success: boolean; message: string }>;
   logout: () => Promise<void>;
   changePassword: (newPassword: string) => Promise<void>;
   setup2FA: () => Promise<string>;
@@ -187,13 +187,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         type: 'login',
         details: 'New user registration',
       });
+      return { success: true, message: 'Registration successful! Please check your email for verification.' };
     } catch (error: any) {
+      let errorMessage = 'An error occurred during registration';
       if (error.code === 'auth/email-already-in-use') {
-        setError('Email is already registered');
+        errorMessage = 'Email is already registered';
       } else {
-        setError('An error occurred during registration');
+        errorMessage = error.message; // Capture the specific Firebase error message
       }
-      throw error;
+      setError(errorMessage);
+      return { success: false, message: errorMessage };
     }
   };
 

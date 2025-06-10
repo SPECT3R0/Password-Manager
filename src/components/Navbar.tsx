@@ -13,7 +13,7 @@ export default function Navbar() {
         <div className="flex justify-between h-14 items-center">
           <div className="flex items-center space-x-3 cursor-pointer" onClick={() => navigate('/dashboard')}>
             <ShieldCheck className="h-7 w-7 text-indigo-600 dark:text-indigo-400 animate-bounce" />
-            <span className="text-xl font-bold text-gray-900 dark:text-gray-100 tracking-tight select-none">SPECT3R - SPM </span>
+            <span className="text-xl font-bold text-gray-900 dark:text-gray-100 tracking-tight select-none">Secure Password Manager </span>
           </div>
           <div className="flex items-center space-x-2">
             <button

@@ -15,7 +15,7 @@ declare global {
 
 export default function Register() {
   const navigate = useNavigate();
-  const { signUp } = useAuth();
+  const { register } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -42,7 +42,7 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      const result = await signUp(email, password);
+      const result = await register(email, password);
       if (result.success) {
         setSuccess(result.message);
         setTimeout(() => navigate('/login'), 2000);
@@ -96,8 +96,8 @@ export default function Register() {
           )}
           <form className="mt-8 space-y-6" onSubmit={handleSubmit} noValidate>
             <div className="space-y-4">
-              <div className="relative">
-                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
+              <div className="relative flex items-center">
+                <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-indigo-400 pointer-events-none z-20" />
                 <input
                   id="email"
                   name="email"
@@ -105,14 +105,15 @@ export default function Register() {
                   autoComplete="email"
                   required
                   aria-label="Email address"
-                  className="appearance-none relative block w-full pl-12 pr-3 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm bg-white dark:bg-gray-800 mb-2 shadow-sm"
+                  className="appearance-none relative block w-full pl-14 pr-3 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm bg-white dark:bg-gray-800 mb-2 shadow-sm"
                   placeholder="Email address"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
+                  style={{ position: 'relative', zIndex: 10 }}
                 />
               </div>
-              <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
+              <div className="relative flex items-center">
+                <KeyRound className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-indigo-400 pointer-events-none z-20" />
                 <input
                   id="password"
                   name="password"
@@ -120,26 +121,25 @@ export default function Register() {
                   autoComplete="new-password"
                   required
                   aria-label="Password"
-                  className="appearance-none relative block w-full pl-12 pr-12 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm bg-white dark:bg-gray-800 shadow-sm"
+                  className="appearance-none relative block w-full pl-14 pr-12 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm bg-white dark:bg-gray-800 shadow-sm"
                   placeholder="Password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  style={{ zIndex: 1 }}
+                  style={{ position: 'relative', zIndex: 10 }}
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 focus:outline-none bg-transparent z-10"
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 focus:outline-none bg-transparent z-30"
                   aria-label={showPassword ? 'Hide password' : 'Show password'}
                   title={showPassword ? 'Hide password' : 'Show password'}
                   tabIndex={0}
-                  style={{ zIndex: 2 }}
                 >
                   {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
               </div>
-              <div className="relative">
-                <KeyRound className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400 pointer-events-none" />
+              <div className="relative flex items-center">
+                <KeyRound className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-indigo-400 pointer-events-none z-20" />
                 <input
                   id="confirm-password"
                   name="confirm-password"
@@ -147,20 +147,19 @@ export default function Register() {
                   autoComplete="new-password"
                   required
                   aria-label="Confirm password"
-                  className="appearance-none relative block w-full pl-12 pr-12 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm bg-white dark:bg-gray-800 shadow-sm"
+                  className="appearance-none relative block w-full pl-14 pr-12 py-3 border border-gray-300 dark:border-gray-700 placeholder-gray-500 dark:placeholder-gray-400 text-gray-900 dark:text-gray-100 rounded-md focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 focus:z-10 sm:text-sm bg-white dark:bg-gray-800 shadow-sm"
                   placeholder="Confirm password"
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  style={{ zIndex: 1 }}
+                  style={{ position: 'relative', zIndex: 10 }}
                 />
                 <button
                   type="button"
                   onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 focus:outline-none bg-transparent z-10"
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 focus:outline-none bg-transparent z-30"
                   aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                   title={showConfirmPassword ? 'Hide password' : 'Show password'}
                   tabIndex={0}
-                  style={{ zIndex: 2 }}
                 >
                   {showConfirmPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                 </button>
