@@ -87,7 +87,8 @@ export default function Login() {
       await signInWithPopup(auth, provider);
       navigate('/dashboard');
     } catch (err: any) {
-      setError('Google sign-in failed.');
+      console.error("Google Sign-in Error:", err);
+      setError(err.message || 'Google sign-in failed.');
     } finally {
       setLoading(false);
     }
