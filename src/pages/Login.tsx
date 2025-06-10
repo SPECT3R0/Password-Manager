@@ -14,7 +14,7 @@ declare global {
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, verify2FA } = useAuth();
+  const { login, verify2FA, signInWithGoogle } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -83,8 +83,7 @@ export default function Login() {
     setLoading(true);
     setError('');
     try {
-      const provider = new GoogleAuthProvider();
-      await signInWithPopup(auth, provider);
+      await signInWithGoogle();
       navigate('/dashboard');
     } catch (err: any) {
       console.error("Google Sign-in Error:", err);

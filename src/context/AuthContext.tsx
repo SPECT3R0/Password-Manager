@@ -8,7 +8,9 @@ import {
   signOut as firebaseSignOut, 
   sendEmailVerification, 
   updatePassword, 
-  User as FirebaseUser 
+  User as FirebaseUser,
+  GoogleAuthProvider,
+  signInWithPopup
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { authenticator } from 'otplib';
@@ -27,6 +29,7 @@ interface AuthContextType {
   setup2FA: () => Promise<string>;
   verify2FA: (token: string) => Promise<void>;
   disable2FA: () => Promise<void>;
+  signInWithGoogle: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -271,42 +274,62 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const disable2FA = async () => {
     if (!user) throw new Error('Not authenticated');
-
     const userDocRef = doc(db, 'users', user.id);
     await updateDoc(userDocRef, {
       two_factor_enabled: false,
-      two_factor_secret: null,
+      two_factor_secret: null
     });
-
-    setUser((u) =>
-      u
-        ? {
-            ...u,
-            two_factor_enabled: false,
-            two_factor_secret: undefined,
-          }
-        : null
-    );
+    setUser(prev => prev ? { ...prev, two_factor_enabled: false, two_factor_secret: undefined } : null);
   };
 
-  return (
-    <AuthContext.Provider
-      value={{
-        user,
-        loading,
-        error,
-        login,
-        register,
-        logout,
-        changePassword,
-        setup2FA,
-        verify2FA,
-        disable2FA,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
-  );
+  const signInWithGoogle = async () => {
+    try {
+      setError(null);
+      const provider = new GoogleAuthProvider();
+      const result = await signInWithPopup(auth, provider);
+      
+      // Get user profile from Firestore
+      const userDocRef = doc(db, 'users', result.user.uid);
+      const userDoc = await getDoc(userDocRef);
+
+      if (!userDoc.exists()) {
+        // Create new user profile for Google sign-in
+        await setDoc(userDocRef, {
+          email: result.user.email,
+          two_factor_enabled: false,
+          two_factor_secret: null,
+          created_at: result.user.metadata.creationTime || new Date().toISOString(),
+          provider: 'google'
+        });
+      }
+
+      // Log successful login
+      await securityService.logLoginAttempt(result.user.email!, true);
+    } catch (error: any) {
+      // Log failed login attempt
+      if (error.code !== 'auth/popup-closed-by-user') {
+        await securityService.logLoginAttempt('google-sign-in', false);
+        setError('An error occurred during Google sign-in');
+      }
+      throw error;
+    }
+  };
+
+  const value = {
+    user,
+    loading,
+    error,
+    login,
+    register,
+    logout,
+    changePassword,
+    setup2FA,
+    verify2FA,
+    disable2FA,
+    signInWithGoogle
+  };
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
