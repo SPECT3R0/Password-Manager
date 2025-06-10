@@ -3,6 +3,11 @@ pipeline {
 
     environment {
         PROJECT_DIR = "E:/SSDD Project/project"
+        // Firebase VITE environment variables - ensure these are set in Jenkins Credentials if sensitive
+        VITE_FIREBASE_API_KEY = credentials('VITE_FIREBASE_API_KEY')
+        VITE_FIREBASE_AUTH_DOMAIN = credentials('VITE_FIREBASE_AUTH_DOMAIN')
+        VITE_FIREBASE_PROJECT_ID = credentials('VITE_FIREBASE_PROJECT_ID')
+        VITE_FIREBASE_STORAGE_BUCKET = credentials('VITE_FIREBASE_STORAGE_BUCKET')
     }
 
     stages {
